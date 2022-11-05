@@ -4,7 +4,7 @@ use futures::executor::block_on;
 use gumdrop::Options;
 use tendermint::Hash;
 use tendermint_light_client::{
-    builder::{LightClientBuilder, SupervisorBuilder},
+    builder::{NoTrustedState, LightClientBuilder, SupervisorBuilder},
     store::memory::MemoryStore,
     supervisor::{Handle as _, Instance},
     verifier::{
@@ -12,8 +12,9 @@ use tendermint_light_client::{
         types::{Height, PeerId, TrustThreshold},
     },
 };
+use tendermint_light_client_verifier::host_functions::helper::CryptoManager;
+use tendermint_light_client_verifier::host_functions::CryptoProvider;
 use tendermint_rpc as rpc;
-
 #[derive(Debug, Options)]
 struct CliOptions {
     #[options(help = "print this help message")]
@@ -69,18 +70,23 @@ fn main() {
             eprintln!("{}\n", CliOptions::usage());
             std::process::exit(1);
         },
-        Some(Command::Sync(sync_opts)) => sync_cmd(sync_opts).unwrap_or_else(|e| {
-            eprintln!("Command failed: {}", e);
-            std::process::exit(1);
-        }),
+        Some(Command::Sync(sync_opts)) => {
+            sync_cmd::<CryptoManager>(sync_opts).unwrap_or_else(|e| {
+                eprintln!("Command failed: {}", e);
+                std::process::exit(1);
+            })
+        },
     }
 }
 
-fn make_instance(
+fn make_instance<HostFunctions>(
     peer_id: PeerId,
     addr: tendermint_rpc::Url,
     opts: &SyncOpts,
-) -> Result<Instance, Box<dyn std::error::Error>> {
+) -> Result<Instance<HostFunctions>, Box<dyn std::error::Error>>
+where
+    HostFunctions: CryptoProvider,
+{
     let light_store = MemoryStore::new();
     let rpc_client = rpc::HttpClient::new(addr).unwrap();
     let options = LightClientOptions {
@@ -89,8 +95,13 @@ fn make_instance(
         clock_drift: Duration::from_secs(1),
     };
 
-    let builder =
-        LightClientBuilder::prod(peer_id, rpc_client, Box::new(light_store), options, None);
+    let builder = LightClientBuilder::<NoTrustedState, HostFunctions>::prod(
+        peer_id,
+        rpc_client,
+        Box::new(light_store),
+        options,
+        None,
+    );
 
     let builder = if let (Some(height), Some(hash)) = (opts.trusted_height, opts.trusted_hash) {
         block_on(builder.trust_primary_at(height, hash))
@@ -101,15 +112,20 @@ fn make_instance(
     Ok(builder.build())
 }
 
-fn sync_cmd(opts: SyncOpts) -> Result<(), Box<dyn std::error::Error>> {
+fn sync_cmd<HostFunctions>(opts: SyncOpts) -> Result<(), Box<dyn std::error::Error>>
+where
+    HostFunctions: CryptoProvider,
+{
     let primary: PeerId = "BADFADAD0BEFEEDC0C0ADEADBEEFC0FFEEFACADE".parse().unwrap();
     let witness: PeerId = "CEFEEDBADFADAD0C0CEEFACADE0ADEADBEEFC0FF".parse().unwrap();
 
     let primary_addr = opts.address.clone();
     let witness_addr = opts.address.clone();
 
-    let primary_instance = make_instance(primary, primary_addr.clone(), &opts)?;
-    let witness_instance = make_instance(witness, witness_addr.clone(), &opts)?;
+    let primary_instance: Instance<HostFunctions> =
+        make_instance(primary, primary_addr.clone(), &opts)?;
+    let witness_instance: Instance<HostFunctions> =
+        make_instance(witness, witness_addr.clone(), &opts)?;
 
     let supervisor = SupervisorBuilder::new()
         .primary(primary, primary_addr, primary_instance)

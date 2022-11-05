@@ -14,7 +14,7 @@ pub trait CryptoProvider: Send + Sync + Default + Debug + 'static {
     fn secp256k1_verify(sig: &[u8], message: &[u8], public: &[u8]) -> Result<(), ()>;
 }
 
-#[cfg(any(feature = "test-helpers", test))]
+// #[cfg(any(feature = "test-helpers", test))]
 pub mod helper {
     use crate::host_functions::CryptoProvider;
 
