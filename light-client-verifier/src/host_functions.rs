@@ -8,13 +8,12 @@ pub trait CryptoProvider: Send + Sync + Default + Debug + 'static {
     fn sha2_256(preimage: &[u8]) -> [u8; 32];
 
     /// Verify an ed25519 signature
-    fn ed25519_verify(sig: &[u8], msg: &[u8], pub_key: &[u8]) -> Result<(), ()>;
+    fn ed25519_verify(sig: &[u8], msg: &[u8], pub_key: &[u8]) -> bool;
 
     /// verify secp256k1 signatures
-    fn secp256k1_verify(sig: &[u8], message: &[u8], public: &[u8]) -> Result<(), ()>;
+    fn secp256k1_verify(sig: &[u8], message: &[u8], public: &[u8]) -> bool;
 }
 
-// #[cfg(any(feature = "test-helpers", test))]
 pub mod helper {
     use crate::host_functions::CryptoProvider;
 
@@ -26,27 +25,27 @@ pub mod helper {
             sp_core::hashing::sha2_256(preimage)
         }
 
-        fn ed25519_verify(sig: &[u8], msg: &[u8], pub_key: &[u8]) -> Result<(), ()> {
+        fn ed25519_verify(sig: &[u8], msg: &[u8], pub_key: &[u8]) -> bool {
             use sp_core::{ed25519, ByteArray, Pair};
 
-            let signature = ed25519::Signature::from_slice(sig).ok_or(())?;
+            let signature = ed25519::Signature::from_slice(sig).ok_or(()).unwrap();
 
-            let public_key = ed25519::Public::from_slice(pub_key).map_err(|_| ())?;
+            let public_key = ed25519::Public::from_slice(pub_key).map_err(|_| ()).unwrap();
             if ed25519::Pair::verify(&signature, msg, &public_key) {
-                return Ok(());
+                return true;
             }
-            Err(())
+            false
         }
 
-        fn secp256k1_verify(sig: &[u8], message: &[u8], public: &[u8]) -> Result<(), ()> {
+        fn secp256k1_verify(sig: &[u8], message: &[u8], public: &[u8]) -> bool {
             use sp_core::{ecdsa, ByteArray, Pair};
 
-            let public = ecdsa::Public::from_slice(public).map_err(|_| ())?;
+            let public = ecdsa::Public::from_slice(public).map_err(|_| ()).unwrap();
             if ecdsa::Pair::verify_weak(&sig, message, &public) {
-                return Ok(());
+                return true;
             }
 
-            Err(())
+            false
         }
     }
 }

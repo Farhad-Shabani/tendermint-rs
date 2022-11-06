@@ -188,7 +188,7 @@ fn verify_signature<H: CryptoProvider>(
     signature: &[u8],
 ) -> bool {
     match pubkey {
-        PublicKey::Ed25519(pk) => H::ed25519_verify(signature, message, pk.as_ref()).is_ok(),
+        PublicKey::Ed25519(pk) => H::ed25519_verify(signature, message, pk.as_ref()),
         /// TODO: secp256k1
         #[cfg(feature = "secp256k1")]
         PublicKey::Secp256k1(pk) => {
